@@ -1,60 +1,68 @@
-/**
- * Responsive Spacer Card for Home Assistant Lovelace.
- *
- * Reserves vertical space that is a ratio of the card's rendered width.
- * A ResizeObserver makes it react to dashboard column changes, browser zoom,
- * and device rotation without relying on fixed pixel heights.
- */
+/** A framework-free, width-proportional Lovelace spacer. */
+const CARD_TYPE = "responsive-spacer-card";
+const DEFAULT_CONFIG = Object.freeze({ ratio: 0.17, min_height: 0, max_height: 0 });
+function numberConfig(value, fallback, name) {
+  if (value === undefined || value === null || value === "") return fallback;
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < 0) throw new Error(`${CARD_TYPE}: ${name} must be a non-negative number.`);
+  return number;
+}
+function normaliseConfig(config) {
+  if (!config || typeof config !== "object") throw new Error(`${CARD_TYPE}: configuration is required.`);
+  const result = { ratio: numberConfig(config.ratio, DEFAULT_CONFIG.ratio, "ratio"), min_height: numberConfig(config.min_height, DEFAULT_CONFIG.min_height, "min_height"), max_height: numberConfig(config.max_height, DEFAULT_CONFIG.max_height, "max_height") };
+  if (result.max_height > 0 && result.max_height < result.min_height) throw new Error(`${CARD_TYPE}: max_height must be greater than or equal to min_height.`);
+  return result;
+}
 class ResponsiveSpacerCard extends HTMLElement {
   constructor() {
-    super();
-    this._ratio = 0.17;
-    this._height = 0;
+    super(); this._config = { ...DEFAULT_CONFIG }; this._height = 0;
     this._resizeObserver = new ResizeObserver(() => this._updateHeight());
-
     const root = this.attachShadow({ mode: "open" });
     this._spacer = document.createElement("div");
     this._spacer.setAttribute("aria-hidden", "true");
-    this._spacer.style.cssText = "display:block; width:100%; pointer-events:none;";
+    this._spacer.style.cssText = "display:block;width:100%;pointer-events:none;";
     root.append(this._spacer);
   }
-
-  setConfig(config) {
-    const ratio = Number(config.ratio ?? 0.17);
-    if (!Number.isFinite(ratio) || ratio < 0) {
-      throw new Error("responsive-spacer-card: ratio must be a non-negative number.");
-    }
-    this._ratio = ratio;
-    this._updateHeight();
-  }
-
-  connectedCallback() {
-    this.style.display = "block";
-    this._resizeObserver.observe(this);
-    this._updateHeight();
-  }
-
-  disconnectedCallback() {
-    this._resizeObserver.disconnect();
-  }
-
-  getCardSize() {
-    return Math.max(1, Math.ceil(this._height / 50));
-  }
-
+  setConfig(config) { this._config = normaliseConfig(config); this._updateHeight(); }
+  connectedCallback() { this.style.display = "block"; this._resizeObserver.observe(this); this._updateHeight(); }
+  disconnectedCallback() { this._resizeObserver.disconnect(); }
+  getCardSize() { return Math.max(1, Math.ceil(this._height / 50)); }
+  getConfigElement() { return document.createElement(`${CARD_TYPE}-editor`); }
+  static getStubConfig() { return { type: `custom:${CARD_TYPE}`, ratio: DEFAULT_CONFIG.ratio }; }
   _updateHeight() {
-    const width = this.getBoundingClientRect().width;
-    if (!width) return;
-    this._height = Math.round(width * this._ratio);
-    this._spacer.style.height = `${this._height}px`;
+    const width = this.getBoundingClientRect().width; if (!width) return;
+    let height = Math.max(width * this._config.ratio, this._config.min_height);
+    if (this._config.max_height > 0) height = Math.min(height, this._config.max_height);
+    this._height = Math.round(height); this._spacer.style.height = `${this._height}px`;
   }
 }
-
-customElements.define("responsive-spacer-card", ResponsiveSpacerCard);
-
+class ResponsiveSpacerCardEditor extends HTMLElement {
+  set hass(hass) {
+    this._hass = hass;
+    if (this._form) this._form.hass = hass;
+  }
+  setConfig(config) { this._config = { ...DEFAULT_CONFIG, ...config }; this._render(); }
+  _render() {
+    if (!this._form) {
+      this.attachShadow({ mode: "open" }); this._form = document.createElement("ha-form");
+      this._form.addEventListener("value-changed", (event) => {
+        event.stopPropagation();
+        this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: { type: `custom:${CARD_TYPE}`, ...this._config, ...event.detail.value } }, bubbles: true, composed: true }));
+      });
+      this.shadowRoot.append(this._form);
+    }
+    this._form.hass = this._hass;
+    this._form.schema = [
+      { name: "ratio", required: true, selector: { number: { min: 0, step: 0.01, mode: "box" } } },
+      { name: "min_height", selector: { number: { min: 0, step: 1, mode: "box", unit_of_measurement: "px" } } },
+      { name: "max_height", selector: { number: { min: 0, step: 1, mode: "box", unit_of_measurement: "px" } } },
+    ];
+    this._form.data = this._config;
+    this._form.computeLabel = (schema) => ({ ratio: "Height ratio", min_height: "Minimum height", max_height: "Maximum height (0 = no limit)" })[schema.name];
+    this._form.computeHelper = (schema) => ({ ratio: "Spacer height ÷ rendered card width. Example: 0.17 means 17%.", min_height: "Optional lower limit in pixels.", max_height: "Optional upper limit in pixels." })[schema.name];
+  }
+}
+customElements.define(CARD_TYPE, ResponsiveSpacerCard);
+customElements.define(`${CARD_TYPE}-editor`, ResponsiveSpacerCardEditor);
 window.customCards = window.customCards || [];
-window.customCards.push({
-  type: "responsive-spacer-card",
-  name: "Responsive Spacer Card",
-  description: "A spacer whose height is a ratio of its rendered width.",
-});
+window.customCards.push({ type: CARD_TYPE, name: "Responsive Spacer Card", description: "An invisible spacer whose height is a ratio of its rendered width.", preview: false });

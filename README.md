@@ -1,27 +1,28 @@
 # Responsive Spacer Card
 
-A tiny Home Assistant Lovelace custom card that reserves vertical space based on its own rendered width.
+An invisible Home Assistant Lovelace card that reserves vertical space based on its own rendered width.
 
-It uses `ResizeObserver`, so the gap responds to dashboard column changes, phone rotation, browser resizing, and zoom. It is intended for layouts where `custom:gap-card`'s fixed pixel height is unsuitable.
+Unlike fixed-pixel spacer cards, it uses `ResizeObserver` to respond to dashboard column changes, browser resizing, zoom, and phone rotation. It includes a visual editor in Home Assistant's card editor.
 
-## Installation with HACS
+## Install with HACS
 
 1. In HACS, open **Frontend** → menu → **Custom repositories**.
-2. Add this repository with category **Dashboard**.
+2. Add `https://github.com/abangtor/responsive-spacer-card` with category **Dashboard**.
 3. Install **Responsive Spacer Card**.
-4. Reload the browser, then add the resource if Home Assistant does not add it automatically:
-   `/hacsfiles/responsive-spacer-card/responsive-spacer-card.js` as a JavaScript module.
+4. Reload the browser. If HACS does not add it automatically, add `/hacsfiles/responsive-spacer-card/responsive-spacer-card.js` as a JavaScript module resource.
 
-## Usage
+## Use
+
+Add the card in the visual editor, or use YAML:
 
 ```yaml
 type: custom:responsive-spacer-card
 ratio: 0.17
 ```
 
-`ratio` is a decimal proportion of the card width. For example, `0.17` creates a gap 17% as high as the card is wide; a 350px-wide card receives a 60px gap.
+`ratio` is the spacer height divided by its rendered width. For example, a ratio of `0.17` gives a 60px gap when the card is 350px wide.
 
-Use the card as an item in an `entities` card:
+Inside an entities card:
 
 ```yaml
 type: entities
@@ -32,11 +33,28 @@ entities:
     name: Down Light
 ```
 
+## Configuration
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `ratio` | number | `0.17` | Spacer height divided by rendered width. `0.17` means 17%. |
+| `min_height` | number | `0` | Optional minimum height in pixels. `0` disables it. |
+| `max_height` | number | `0` | Optional maximum height in pixels. `0` disables it. |
+
+```yaml
+type: custom:responsive-spacer-card
+ratio: 0.17
+min_height: 32
+max_height: 120
+```
+
+All values must be non-negative. When set, `max_height` must not be less than `min_height`.
+
 ## Notes
 
-- `ratio` must be zero or a positive number.
-- The card intentionally has no visual surface, margin, or padding.
-- This is a frontend-only Lovelace card; it has no Home Assistant integration or configuration entry.
+- The card intentionally has no visual surface, margin, padding, or click target.
+- It is frontend-only; no Home Assistant integration or configuration entry is needed.
+- The card works in stacks, grids, and entity-card rows as long as Home Assistant gives it a measurable width.
 
 ## License
 
