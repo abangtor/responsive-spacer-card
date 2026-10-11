@@ -1,6 +1,6 @@
 # Responsive Spacer Card
 
-An invisible Home Assistant Lovelace card that reserves vertical space based on its rendered width or its containing Entities card's width.
+An invisible Home Assistant Lovelace card that reserves vertical space based on its rendered width, its containing Entities card, or the enclosing card that paints a background image.
 
 Unlike fixed-pixel spacer cards, it uses `ResizeObserver` to respond to dashboard column changes, browser resizing, zoom, and phone rotation. It includes a visual editor in Home Assistant's card editor.
 
@@ -29,7 +29,7 @@ type: entities
 entities:
   - type: custom:responsive-spacer-card
     ratio: 0.17
-    width_source: card
+    width_source: background
   - entity: light.wet_kitchen_down_light
     name: Down Light
 ```
@@ -39,7 +39,7 @@ entities:
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
 | `ratio` | number | `0.17` | Spacer height divided by rendered width. `0.17` means 17%. |
-| `width_source` | `self` or `card` | `self` | `card` measures the containing Entities card; use it when the background belongs to the outer card. |
+| `width_source` | `self`, `card`, or `background` | `self` | `card` measures the containing Entities card. `background` measures the nearest enclosing `ha-card` with a CSS background image—use this to match a responsive room-image background. It falls back to `card` if none is found. |
 | `min_height` | number | `0` | Optional minimum height in pixels. `0` disables it. |
 | `max_height` | number | `0` | Optional maximum height in pixels. `0` disables it. |
 

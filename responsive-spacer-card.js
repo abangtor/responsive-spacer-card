@@ -15,8 +15,8 @@ function numberConfig(value, fallback, name) {
 function normaliseConfig(config) {
   if (!config || typeof config !== "object") throw new Error(`${CARD_TYPE}: configuration is required.`);
   const width_source = config.width_source ?? DEFAULT_CONFIG.width_source;
-  if (!["self", "card"].includes(width_source)) {
-    throw new Error(`${CARD_TYPE}: width_source must be either "self" or "card".`);
+  if (!["self", "card", "background"].includes(width_source)) {
+    throw new Error(`${CARD_TYPE}: width_source must be "self", "card", or "background".`);
   }
   const result = {
     ratio: numberConfig(config.ratio, DEFAULT_CONFIG.ratio, "ratio"),
@@ -45,7 +45,10 @@ class ResponsiveSpacerCard extends HTMLElement {
   }
   disconnectedCallback() { this._resizeObserver.disconnect(); }
   getCardSize() { return Math.max(1, Math.ceil(this._height / 50)); }
-  getConfigElement() { return document.createElement(`${CARD_TYPE}-editor`); }
+  // Both forms are deliberate: older Lovelace editors call the instance
+  // method, while current editors prefer the static method.
+  getConfigElement() { return ResponsiveSpacerCard.getConfigElement(); }
+  static getConfigElement() { return document.createElement(`${CARD_TYPE}-editor`); }
   static getStubConfig() { return { type: `custom:${CARD_TYPE}`, ratio: DEFAULT_CONFIG.ratio }; }
   _updateHeight() {
     const width = this._widthElement().getBoundingClientRect().width;
@@ -55,12 +58,29 @@ class ResponsiveSpacerCard extends HTMLElement {
     this._height = Math.round(height); this._spacer.style.height = `${this._height}px`;
   }
   _widthElement() {
-    if (this._config.width_source !== "card") return this;
+    if (this._config.width_source === "self") return this;
+    if (this._config.width_source === "background") {
+      const backgroundCard = this._backgroundCard();
+      if (backgroundCard) return backgroundCard;
+    }
     let element = this;
     while ((element = composedParent(element))) {
       if (element.localName === "hui-entities-card") return element;
     }
     return this;
+  }
+  _backgroundCard() {
+    let element = this;
+    while ((element = composedParent(element))) {
+      const candidates = [
+        element.localName === "ha-card" ? element : null,
+        element.shadowRoot?.querySelector?.("ha-card"),
+      ];
+      for (const candidate of candidates) {
+        if (candidate && getComputedStyle(candidate).backgroundImage !== "none") return candidate;
+      }
+    }
+    return null;
   }
 }
 
@@ -89,14 +109,15 @@ class ResponsiveSpacerCardEditor extends HTMLElement {
       { name: "ratio", required: true, selector: { number: { min: 0, step: 0.01, mode: "box" } } },
       { name: "width_source", selector: { select: { options: [
         { value: "self", label: "Spacer row" },
-        { value: "card", label: "Containing card" },
+        { value: "card", label: "Entities card" },
+        { value: "background", label: "Card with background image" },
       ], mode: "dropdown" } } },
       { name: "min_height", selector: { number: { min: 0, step: 1, mode: "box", unit_of_measurement: "px" } } },
       { name: "max_height", selector: { number: { min: 0, step: 1, mode: "box", unit_of_measurement: "px" } } },
     ];
     this._form.data = this._config;
     this._form.computeLabel = (schema) => ({ ratio: "Height ratio", width_source: "Measure width from", min_height: "Minimum height", max_height: "Maximum height (0 = no limit)" })[schema.name];
-    this._form.computeHelper = (schema) => ({ ratio: "Spacer height ÷ measured width. Example: 0.17 means 17%.", width_source: "Use Containing card when this spacer is inside an Entities card whose background is owned by an outer card.", min_height: "Optional lower limit in pixels.", max_height: "Optional upper limit in pixels." })[schema.name];
+    this._form.computeHelper = (schema) => ({ ratio: "Spacer height ÷ measured width. Example: 0.17 means 17%.", width_source: "Use Card with background image when matching an image painted on an enclosing card. It falls back to the Entities card if no image is found.", min_height: "Optional lower limit in pixels.", max_height: "Optional upper limit in pixels." })[schema.name];
   }
 }
 customElements.define(CARD_TYPE, ResponsiveSpacerCard);
