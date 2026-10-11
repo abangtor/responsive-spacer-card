@@ -1,6 +1,11 @@
 /** A framework-free, width-proportional Lovelace spacer. */
 const CARD_TYPE = "responsive-spacer-card";
-const DEFAULT_CONFIG = Object.freeze({ ratio: 0.17, min_height: 0, max_height: 0 });
+const DEFAULT_CONFIG = Object.freeze({
+  ratio: 0.17,
+  min_height: 0,
+  max_height: 0,
+  width_source: "self",
+});
 function numberConfig(value, fallback, name) {
   if (value === undefined || value === null || value === "") return fallback;
   const number = Number(value);
@@ -9,7 +14,16 @@ function numberConfig(value, fallback, name) {
 }
 function normaliseConfig(config) {
   if (!config || typeof config !== "object") throw new Error(`${CARD_TYPE}: configuration is required.`);
-  const result = { ratio: numberConfig(config.ratio, DEFAULT_CONFIG.ratio, "ratio"), min_height: numberConfig(config.min_height, DEFAULT_CONFIG.min_height, "min_height"), max_height: numberConfig(config.max_height, DEFAULT_CONFIG.max_height, "max_height") };
+  const width_source = config.width_source ?? DEFAULT_CONFIG.width_source;
+  if (!["self", "card"].includes(width_source)) {
+    throw new Error(`${CARD_TYPE}: width_source must be either "self" or "card".`);
+  }
+  const result = {
+    ratio: numberConfig(config.ratio, DEFAULT_CONFIG.ratio, "ratio"),
+    min_height: numberConfig(config.min_height, DEFAULT_CONFIG.min_height, "min_height"),
+    max_height: numberConfig(config.max_height, DEFAULT_CONFIG.max_height, "max_height"),
+    width_source,
+  };
   if (result.max_height > 0 && result.max_height < result.min_height) throw new Error(`${CARD_TYPE}: max_height must be greater than or equal to min_height.`);
   return result;
 }
@@ -24,17 +38,36 @@ class ResponsiveSpacerCard extends HTMLElement {
     root.append(this._spacer);
   }
   setConfig(config) { this._config = normaliseConfig(config); this._updateHeight(); }
-  connectedCallback() { this.style.display = "block"; this._resizeObserver.observe(this); this._updateHeight(); }
+  connectedCallback() {
+    this.style.display = "block";
+    this._resizeObserver.observe(this);
+    requestAnimationFrame(() => this._updateHeight());
+  }
   disconnectedCallback() { this._resizeObserver.disconnect(); }
   getCardSize() { return Math.max(1, Math.ceil(this._height / 50)); }
   getConfigElement() { return document.createElement(`${CARD_TYPE}-editor`); }
   static getStubConfig() { return { type: `custom:${CARD_TYPE}`, ratio: DEFAULT_CONFIG.ratio }; }
   _updateHeight() {
-    const width = this.getBoundingClientRect().width; if (!width) return;
+    const width = this._widthElement().getBoundingClientRect().width;
+    if (!width) return;
     let height = Math.max(width * this._config.ratio, this._config.min_height);
     if (this._config.max_height > 0) height = Math.min(height, this._config.max_height);
     this._height = Math.round(height); this._spacer.style.height = `${this._height}px`;
   }
+  _widthElement() {
+    if (this._config.width_source !== "card") return this;
+    let element = this;
+    while ((element = composedParent(element))) {
+      if (element.localName === "hui-entities-card") return element;
+    }
+    return this;
+  }
+}
+
+function composedParent(element) {
+  if (element.parentElement) return element.parentElement;
+  const root = element.getRootNode?.();
+  return root instanceof ShadowRoot ? root.host : null;
 }
 class ResponsiveSpacerCardEditor extends HTMLElement {
   set hass(hass) {
@@ -54,12 +87,16 @@ class ResponsiveSpacerCardEditor extends HTMLElement {
     this._form.hass = this._hass;
     this._form.schema = [
       { name: "ratio", required: true, selector: { number: { min: 0, step: 0.01, mode: "box" } } },
+      { name: "width_source", selector: { select: { options: [
+        { value: "self", label: "Spacer row" },
+        { value: "card", label: "Containing card" },
+      ], mode: "dropdown" } } },
       { name: "min_height", selector: { number: { min: 0, step: 1, mode: "box", unit_of_measurement: "px" } } },
       { name: "max_height", selector: { number: { min: 0, step: 1, mode: "box", unit_of_measurement: "px" } } },
     ];
     this._form.data = this._config;
-    this._form.computeLabel = (schema) => ({ ratio: "Height ratio", min_height: "Minimum height", max_height: "Maximum height (0 = no limit)" })[schema.name];
-    this._form.computeHelper = (schema) => ({ ratio: "Spacer height ÷ rendered card width. Example: 0.17 means 17%.", min_height: "Optional lower limit in pixels.", max_height: "Optional upper limit in pixels." })[schema.name];
+    this._form.computeLabel = (schema) => ({ ratio: "Height ratio", width_source: "Measure width from", min_height: "Minimum height", max_height: "Maximum height (0 = no limit)" })[schema.name];
+    this._form.computeHelper = (schema) => ({ ratio: "Spacer height ÷ measured width. Example: 0.17 means 17%.", width_source: "Use Containing card when this spacer is inside an Entities card whose background is owned by an outer card.", min_height: "Optional lower limit in pixels.", max_height: "Optional upper limit in pixels." })[schema.name];
   }
 }
 customElements.define(CARD_TYPE, ResponsiveSpacerCard);
