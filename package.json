@@ -1,6 +1,6 @@
 {
   "name": "responsive-spacer-card",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "private": true,
   "description": "A width-relative Home Assistant Lovelace spacer",
   "scripts": {"check": "node --check responsive-spacer-card.js", "test": "node tests/browser.cjs"},

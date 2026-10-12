@@ -1,8 +1,9 @@
 /** A framework-free, width-proportional Lovelace spacer. */
-const VERSION = "1.2.0";
+const VERSION = "1.3.0";
 const CARD_TYPE = "responsive-spacer-card";
 const DEFAULT_CONFIG = Object.freeze({
   ratio: 0.17,
+  scale_factor: 1,
   min_height: 0,
   max_height: 0,
   width_source: "self",
@@ -29,6 +30,7 @@ function normaliseConfig(config) {
   }
   const result = {
     ratio: numberConfig(config.ratio, DEFAULT_CONFIG.ratio, "ratio"),
+    scale_factor: numberConfig(config.scale_factor, DEFAULT_CONFIG.scale_factor, "scale_factor"),
     min_height: numberConfig(config.min_height, DEFAULT_CONFIG.min_height, "min_height"),
     max_height: numberConfig(config.max_height, DEFAULT_CONFIG.max_height, "max_height"),
     width_source,
@@ -91,6 +93,9 @@ class ResponsiveSpacerCard extends HTMLElement {
       // below the selected card's top. No image lookup or viewport units.
       height -= Math.max(0, this.getBoundingClientRect().top - source.top);
     }
+    // Scale only the computed gap, after header compensation and before
+    // limits. A factor of 1 preserves existing configurations exactly.
+    height *= this._config.scale_factor;
     height = Math.max(height, this._config.min_height);
     if (this._config.max_height > 0) height = Math.min(height, this._config.max_height);
     const nextHeight = Math.round(height * 100) / 100;
@@ -146,6 +151,7 @@ class ResponsiveSpacerCardEditor extends HTMLElement {
     this._form.hass = this._hass;
     this._form.schema = [
       { name: "ratio", required: true, selector: { number: { min: 0, step: 0.01, mode: "box" } } },
+      { name: "scale_factor", selector: { number: { min: 0, step: 0.01, mode: "box" } } },
       { name: "width_source", selector: { select: { options: [
         { value: "self", label: "Spacer row" },
         { value: "card", label: "Containing card" },
@@ -159,8 +165,8 @@ class ResponsiveSpacerCardEditor extends HTMLElement {
       { name: "max_height", selector: { number: { min: 0, step: 1, mode: "box", unit_of_measurement: "px" } } },
     ];
     this._form.data = this._config;
-    this._form.computeLabel = (schema) => ({ ratio: "Height ratio", width_source: "Measure width from", height_mode: "Height calculation", min_height: "Minimum height", max_height: "Maximum height (0 = no limit)" })[schema.name];
-    this._form.computeHelper = (schema) => ({ ratio: "Fraction of measured width. Example: 0.17 means 17%.", height_mode: "Fill mode subtracts the title/padding already above this spacer. Following row margins are not included. Limits apply to the remaining gap.", width_source: "Containing card measures the card the row is in. Parent card measures one card level above it; use that for nested room tiles.", min_height: "Optional lower limit in pixels.", max_height: "Optional upper limit in pixels." })[schema.name];
+    this._form.computeLabel = (schema) => ({ ratio: "Height ratio", scale_factor: "Scale factor", width_source: "Measure width from", height_mode: "Height calculation", min_height: "Minimum height", max_height: "Maximum height (0 = no limit)" })[schema.name];
+    this._form.computeHelper = (schema) => ({ ratio: "Base fraction of measured width, before scaling. Example: 0.17 means 17%.", scale_factor: "Multiplies the calculated gap after title/padding compensation. 1 = unchanged, 1.10 = 10% taller, 0.90 = 10% shorter. Min/max limits still apply.", height_mode: "Fill mode subtracts the title/padding already above this spacer. Following row margins are not included. Limits apply to the remaining gap.", width_source: "Containing card measures the card the row is in. Parent card measures one card level above it; use that for nested room tiles.", min_height: "Optional lower limit in pixels.", max_height: "Optional upper limit in pixels." })[schema.name];
   }
 }
 if (!customElements.get(CARD_TYPE)) customElements.define(CARD_TYPE, ResponsiveSpacerCard);

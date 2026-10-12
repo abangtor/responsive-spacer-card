@@ -20,7 +20,7 @@ type: custom:responsive-spacer-card
 ratio: 0.17
 ```
 
-`ratio` is the spacer height divided by its rendered width in the default `gap` mode. For example, a ratio of `0.17` gives a 60px gap when the card is 350px wide.
+`ratio` is the base spacer height divided by the measured width in the default `gap` mode, before applying `scale_factor`. For example, a ratio of `0.17` gives a 60px gap when the card is 350px wide.
 
 Inside an entities card:
 
@@ -38,9 +38,10 @@ entities:
 
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
-| `ratio` | number | `0.17` | Spacer height divided by rendered width. `0.17` means 17%. |
+| `ratio` | number | `0.17` | Base height divided by measured width, before scaling. `0.17` means 17%. |
+| `scale_factor` | number | `1` | Multiplier for the calculated spacer height, after title/padding compensation and before min/max limits. `1.10` is 10% taller; `0.90` is 10% shorter. |
 | `width_source` | `self`, `card`, or `parent_card` | `self` | `self` measures the spacer row. `card` measures its containing Lovelace card. `parent_card` measures one card level above that, which is useful inside nested room tiles. |
-| `height_mode` | `gap` or `remaining` | `gap` | `gap` sets the gap itself to width × ratio. `remaining` subtracts space already above the spacer, aligning its bottom relative to the selected card top. Requires `card` or `parent_card`. |
+| `height_mode` | `gap` or `remaining` | `gap` | `gap` sets the gap itself to width × ratio × scale_factor. `remaining` subtracts space already above the spacer, aligning its bottom relative to the selected card top. Requires `card` or `parent_card`. |
 | `min_height` | number | `0` | Optional minimum height in pixels. `0` disables it. |
 | `max_height` | number | `0` | Optional maximum height in pixels. `0` disables it. |
 
@@ -69,13 +70,13 @@ height_mode: remaining
 ratio: 0.29
 ```
 
-This computes `max(0, card_width * ratio - space_above_spacer)`. The selected
+At the default `scale_factor: 1`, this computes `max(0, card_width * ratio - space_above_spacer)`. The selected
 card is a real enclosing `ha-card`, found across shadow roots, not a picture or
 an arbitrary sibling. Use `card` for a single card, `parent_card` for a nested
 card. If there is no parent card, the containing card is used. If no card is
 available at all, sizing falls back to the spacer itself.
 
-- `ratio` now describes the position of the spacer's **bottom** from the card top.
+- With `scale_factor: 1`, `ratio` describes the position of the spacer's **bottom** from the card top.
 - Minimum and maximum heights limit the remaining gap, so limits can prevent exact alignment.
 - A title taller than the target leaves a zero-height spacer; preceding content is never overlapped.
 - Margins/gaps **after** the spacer are outside its height. For exact alignment of the next row, remove that one gap in the containing card's styling. On current HA Entities cards with UIX, for a spacer in the first row:
@@ -91,6 +92,39 @@ uix:
 Merge this into any existing UIX style. Card-mod installations can use the same
 CSS under `card_mod`; do not mix both styling systems on one card. This selector
 is specific to the current Entities card layout, not a universal custom-card rule.
+
+### Manual scale adjustment
+
+Use **Scale factor** in the visual editor, or add `scale_factor` to YAML:
+
+```yaml
+type: custom:responsive-spacer-card
+width_source: parent_card
+height_mode: remaining
+ratio: 0.29
+scale_factor: 1.10
+```
+
+- `1` preserves the existing layout (also the default when omitted).
+- `1.10` increases the calculated **spacer height** by 10%.
+- `0.90` reduces it by 10%.
+- `0` collapses the spacer unless `min_height` is set.
+
+In `gap` mode: `height = width * ratio * scale_factor`.
+In `remaining` mode: `height = max(0, width * ratio - space_above_spacer) * scale_factor`.
+Minimum and maximum pixel limits are applied **after** scaling.
+
+In fill/remaining mode, the title and padding themselves are **not** scaled.
+For example, at 500px width with 66px above the spacer, ratio `0.29` produces
+79px of spacing; factor `1.10` makes it 86.9px. At 374px width the corresponding
+42.46px gap becomes 46.706px. This lets you tune the gap's response to width
+independently of the base target ratio. A non-default factor deliberately moves
+the controls away from the original exact ratio.
+
+This is one setting for this spacer on all devices, not automatic per-device
+calibration. It does not resize the background, title, or other controls.
+If a min/max limit is reached or the gap is already zero, changing the factor
+may have no visible effect. Return it to `1` to reset the adjustment.
 
 ### Background briefly visible, then gone
 
@@ -112,7 +146,7 @@ npm test
 ```
 
 Browser regressions cover nested width selection, desktop/mobile widths, title
-reflow, clamps, reconnection, idle observer stability, validation, and editor
+reflow, scale factors in both modes, clamps, reconnection, idle observer stability, validation, and editor
 configuration events. CI runs the same checks. Native `ha-form` rendering and
 third-party wrappers must additionally be checked in Home Assistant itself.
 

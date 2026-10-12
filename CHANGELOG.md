@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.0
+
+- Add optional `scale_factor` for manual spacer-height adjustment in YAML and the visual editor (default `1`, preserving existing layouts).
+- Apply scaling after fixed-title/padding compensation and before minimum/maximum height limits.
+- Explain how scale factor and ratio interact, with desktop/mobile-sized examples.
+- Cover scaling at different widths, live editor updates, default behavior, validation, and limits in Chromium and Firefox regression tests.
+
 ## 1.2.0
 
 - Add optional `height_mode: remaining` and its visual-editor control. It accounts for fixed title/padding above the spacer when aligning content to a card-width ratio.

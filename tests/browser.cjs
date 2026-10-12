@@ -46,15 +46,40 @@ const source = readFileSync('responsive-spacer-card.js', 'utf8');
         m = await measure();
         assert.ok(Math.abs(m.bottom / width - 0.29) < 0.0002, `${name}: content offset must remain proportional at ${width}px`);
       }
+      // Concrete geometry expectations distinguish scaling the remaining gap
+      // from scaling the target position (which would only duplicate ratio).
+      for (const height_mode of ['gap', 'remaining']) {
+        for (const [width, gap] of [[500, 145], [374, 108.46]]) {
+          await page.evaluate(width => fixture.room.style.width = `${width}px`, width);
+          const baseHeight = height_mode === 'gap' ? gap : gap - 66;
+          for (const scale_factor of [0, 0.75, 1, 1.25]) {
+            await apply({ width_source: 'parent_card', height_mode, ratio: 0.29, scale_factor });
+            m = await measure();
+            assert.ok(Math.abs(m.height - baseHeight * scale_factor) < 0.05,
+              `${name}: ${height_mode} scale ${scale_factor} at ${width}px`);
+          }
+        }
+      }
+      await page.evaluate(() => fixture.room.style.width = '492px');
+      // Clearing/omitting the factor resets it to 1, including after an edit.
+      for (const scale_factor of [undefined, null, '']) {
+        await apply({ width_source: 'parent_card', height_mode: 'remaining', ratio: 0.29, scale_factor });
+        m = await measure(); assert.ok(Math.abs(m.bottom - 142.68) < 0.05);
+      }
       await page.evaluate(() => fixture.title.style.height = '90px');
       await page.waitForTimeout(80);
       m = await measure(); assert.ok(Math.abs(m.bottom - 492 * 0.29) < 0.05, 'header reflow compensated');
       await apply({ width_source: 'parent_card', height_mode: 'remaining', ratio: 0.1 });
       m = await measure(); assert.equal(m.height, 0, 'never overlaps preceding content');
-      await apply({ width_source: 'parent_card', height_mode: 'remaining', ratio: 0.1, min_height: 20 });
+      await apply({ width_source: 'parent_card', height_mode: 'remaining', ratio: 0.1, min_height: 20, scale_factor: 2 });
       m = await measure(); assert.equal(m.height, 20);
       await apply({ width_source: 'parent_card', ratio: 1, max_height: 30 });
       m = await measure(); assert.equal(m.height, 30);
+      await apply({ width_source: 'parent_card', ratio: 0.2, scale_factor: 0, min_height: 20 });
+      m = await measure(); assert.equal(m.height, 20, 'minimum applies after zero scaling');
+      await apply({ width_source: 'parent_card', height_mode: 'remaining', ratio: 0.29, scale_factor: 2, max_height: 80 });
+      m = await measure(); assert.equal(m.height, 80, 'maximum applies after scaling the remaining gap');
+      await apply({ width_source: 'parent_card', height_mode: 'remaining', ratio: 0.29, scale_factor: 1.1 });
       const stable = await page.evaluate(async () => {
         let writes = 0;
         const mo = new MutationObserver(records => writes += records.length);
@@ -71,7 +96,7 @@ const source = readFileSync('responsive-spacer-card.js', 'utf8');
       await page.waitForTimeout(80);
       m = await measure(); assert.ok(Math.abs(m.height - 98.4) < 0.05, 'reconnection restores observer');
       const failures = await page.evaluate(() => {
-        return [{ ratio: -1 }, { width_source: 'picture' }, { height_mode: 'remaining' }, { min_height: 20, max_height: 10 }].map(config => {
+        return [{ scale_factor: -1 }, { scale_factor: 'invalid' }, { scale_factor: 'Infinity' }, { scale_factor: 'NaN' }, { ratio: -1 }, { width_source: 'picture' }, { height_mode: 'remaining' }, { min_height: 20, max_height: 10 }].map(config => {
           try { document.createElement('responsive-spacer-card').setConfig(config); return false; } catch { return true; }
         });
       });
@@ -82,16 +107,25 @@ const source = readFileSync('responsive-spacer-card.js', 'utf8');
         const changes = [];
         editor.addEventListener('config-changed', event => changes.push(event.detail.config));
         const form = editor.shadowRoot.querySelector('ha-form');
+        const defaultScale = form.data.scale_factor;
+        editor.addEventListener('config-changed', event => fixture.spacer.setConfig(event.detail.config));
         form.dispatchEvent(new CustomEvent('value-changed', { detail: { value: { ratio: 0.29, height_mode: 'remaining' } } }));
+        form.dispatchEvent(new CustomEvent('value-changed', { detail: { value: { scale_factor: 1.15 } } }));
         form.dispatchEvent(new CustomEvent('value-changed', { detail: { value: { min_height: 12 } } }));
-        return { config: changes.at(-1), fields: form.schema.map(field => field.name) };
+        return { config: changes.at(-1), defaultScale, fields: form.schema.map(field => field.name) };
       });
+      assert.equal(editorResult.defaultScale, 1);
+      assert.equal(editorResult.config.scale_factor, 1.15);
+      assert.ok(editorResult.fields.includes('scale_factor'));
       assert.equal(editorResult.config.ratio, 0.29);
       assert.equal(editorResult.config.height_mode, 'remaining');
       assert.equal(editorResult.config.width_source, 'card');
       assert.ok(editorResult.fields.includes('height_mode'));
+      await page.waitForTimeout(80);
+      m = await measure();
+      assert.ok(Math.abs(m.height - 47.242) < 0.05, 'editor factor changes resize the preview and survive later edits');
       assert.deepEqual(errors, []);
-      console.log(`${name}: responsive sizing, fixed-header compensation, limits, lifecycle, observer stability, validation and editor events passed`);
+      console.log(`${name}: responsive sizing, scale factors, fixed-header compensation, limits, lifecycle, observer stability, validation and editor events passed`);
     } finally { await browser.close(); }
   }
 })().catch(error => { console.error(error); process.exitCode = 1; });
